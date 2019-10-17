@@ -1,6 +1,6 @@
 sudo: required
 group: stable
-dist: xenial
+dist: bionic
 os: linux
 language: python
 services:
@@ -10,12 +10,15 @@ python:
   - '3.5'
   - '3.6'
   - '3.7'
+  - '3.7-dev'
   - '3.8-dev'
-before_install:
-  - sudo apt-get -qq update
-install: pip install -r requirements.txt
+  - 'nightly'
+install:
+  - sudo apt-get -y install qemu qemu-system-arm qemu-system-x86 libvirt-dev libvirt-daemon libvirt-daemon-system libvirt-clients nmap
+  - pip install -r requirements.txt
+  - pip install -r requirements-dev.txt
+  - pip install libvirt-python==5.5.0
 before_script:
-  - pip install flake8 flake8-import-order Sphinx
   # stop the build if there are Python syntax errors or undefined names
   - flake8 --count --application-import-names cowrie --max-line-length=120 --statistics .
   - python setup.py build sdist bdist
@@ -29,3 +32,5 @@ notifications:
 matrix:
   allow_failures:
     - python: '3.8-dev'
+    - python: '3.7-dev'
+    - python: 'nightly'
