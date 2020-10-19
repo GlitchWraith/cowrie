@@ -57,7 +57,7 @@ class HoneyPotTelnetSession(TelnetBootstrapProtocol):
         self.avatar = self
 
         # Do the delayed file system initialization
-        self.server.initFileSystem()
+        self.server.initFileSystem(self.home)
 
     def connectionMade(self):
         processprotocol = TelnetSessionProcessProtocol(self)
@@ -105,7 +105,7 @@ class TelnetSessionProcessProtocol(protocol.ProcessProtocol):
         self.session.write(data)
 
     def errReceived(self, err):
-        log.err("Error received: {}".format(err))
+        log.msg("Error received: {}".format(err))
         # EXTENDED_DATA_STDERR is from ssh, no equivalent in telnet?
         # self.session.writeExtended(connection.EXTENDED_DATA_STDERR, err)
 

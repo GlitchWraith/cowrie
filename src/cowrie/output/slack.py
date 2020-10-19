@@ -31,7 +31,7 @@ from __future__ import absolute_import, division
 import json
 import time
 
-from slackclient import SlackClient
+from slack import SlackClient
 
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
@@ -45,7 +45,6 @@ class Output(cowrie.core.output.Output):
     def start(self):
         self.slack_channel = CowrieConfig().get('output_slack', 'channel')
         self.slack_token = CowrieConfig().get('output_slack', 'token')
-        pass
 
     def stop(self):
         pass

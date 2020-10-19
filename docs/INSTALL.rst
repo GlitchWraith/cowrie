@@ -2,17 +2,22 @@
 Installing Cowrie in seven steps.
 #################################
 
+This guide describes how to install Cowrie in `shell` mode. For `proxy` mode
+read `PROXY.rst`.
+
 * [Step 1: Install dependencies](#step-1-install-dependencies)
 * [Step 2: Create a user account](#step-2-create-a-user-account)
 * [Step 3: Checkout the code](#step-3-checkout-the-code)
 * [Step 4: Setup Virtual Environment](#step-4-setup-virtual-environment)
 * [Step 5: Install configuration file](#step-5-install-configuration-file)
-* [Step 6: Generate a DSA key (OPTIONAL)](#step-6-generate-a-dsa-key)
-* [Step 7: Starting Cowrie](#step-7-turning-on-cowrie)
-* [Step 8: Port redirection (OPTIONAL)](#step-8-port-redirection-optional)
+* [Step 6: Starting Cowrie](#step-6-starting-cowrie)
+* [Step 8: Listening on port 22 (OPTIONAL)](#step-8-listening-on-port-22-optional)
+* [Installing Backend Pool dependencies (OPTIONAL)](#running-using-supervisord)
 * [Running within supervisord (OPTIONAL)](#running-using-supervisord)
 * [Configure Additional Output Plugins (OPTIONAL)](#configure-additional-output-plugins-optional)
 * [Troubleshooting](#troubleshooting)
+* [Updating Cowrie](#updating-cowrie)
+* [Modifying Cowrie](#modifying-cowrie)
 
 Step 1: Install dependencies
 ****************************
@@ -24,10 +29,6 @@ On Debian based systems (last verified on Debian 10, 2019-08-18):
 For a Python3 based environment::
 
     $ sudo apt-get install git python-virtualenv libssl-dev libffi-dev build-essential libpython3-dev python3-minimal authbind virtualenv
-
-Or for Python2::
-
-    $ sudo apt-get install git python-virtualenv libssl-dev libffi-dev build-essential libpython-dev python2.7-minimal authbind
 
 Step 2: Create a user account
 *****************************
@@ -76,14 +77,7 @@ Next you need to create your virtual environment::
     New python executable in ./cowrie/cowrie-env/bin/python
     Installing setuptools, pip, wheel...done.
 
-Alternatively, create a Python2 virtual environment::
-
-    $ virtualenv --python=python2 cowrie-env
-    New python executable in ./cowrie/cowrie-env/bin/python
-    Installing setuptools, pip, wheel...done.
-
 Activate the virtual environment and install packages::
-
 
     $ source cowrie-env/bin/activate
     (cowrie-env) $ pip install --upgrade pip
@@ -93,7 +87,7 @@ Step 5: Install configuration file
 **********************************
 
 The configuration for Cowrie is stored in cowrie.cfg.dist and
-cowrie.cfg. Both files are read on startup, where entries from
+cowrie.cfg (Located in cowrie/etc). Both files are read on startup, where entries from
 cowrie.cfg take precedence. The .dist file can be overwritten by
 upgrades, cowrie.cfg will not be touched. To run with a standard
 configuration, there is no need to change anything. To enable telnet,
@@ -175,7 +169,7 @@ Setcap
 
 Or use setcap to give permissions to Python to listen on ports<1024:: 
 
-    $ setcap cap_net_bind_service=+ep /usr/bin/python2.7 
+    $ setcap cap_net_bind_service=+ep /usr/bin/python3
 
 And change the listening ports in `cowrie.cfg` as above.
 
@@ -191,7 +185,7 @@ and their Python interface. In Debian/Ubuntu::
 
 Then install the Python API to run the backend pool::
 
-    (cowrie-env) $ pip install libvirt-python==5.5.0
+    (cowrie-env) $ pip install libvirt-python==6.4.0
 
 To allow Qemu to use disk images and snapshots, set it to run with the user and group of the user running the pool
 (usually called 'cowrie' too::

@@ -1,6 +1,8 @@
 # Copyright (c) 2009 Upi Tamminen <desaster@gmail.com>
 # See the COPYRIGHT file for more information
 
+# coding=utf-8
+
 from __future__ import absolute_import, division
 
 import codecs
@@ -280,7 +282,7 @@ class command_ps(HoneyPotCommand):
                       '%s'.ljust(12 - len('1024')) % '1024',
                       '%s'.ljust(10 - len('?')) % '?',
                       '%s'.ljust(8 - len('Ss')) % 'Ss',
-                      '%s'.ljust(8 - len('June22')) % 'June22',
+                      '%s'.ljust(8 - len('July22')) % 'July22',
                       '%s'.ljust(8 - len('0:00')) % '0:00',
                       '%s'.ljust(30 - len('/usr/sbin/sshd: %s@pts/0')) % '/usr/sbin/sshd: %s@pts/0' % user)
             output_array.append(output)
@@ -494,10 +496,8 @@ class command_passwd(HoneyPotCommand):
 
         if line != self.passwd or self.passwd == '*':
             self.write('Sorry, passwords do not match\n')
-            self.exit()
-            return
-
-        self.write('passwd: password updated successfully\n')
+        else:
+            self.write('passwd: password updated successfully\n')
         self.exit()
 
     def lineReceived(self, line):
@@ -532,8 +532,8 @@ class command_shutdown(HoneyPotCommand):
                 "-t secs: delay between warning and kill signal. ",
                 "** the \"time\" argument is mandatory! (try \"now\") **",
             )
-            for l in output:
-                self.write('{0}\n'.format(l))
+            for line in output:
+                self.write('{0}\n'.format(line))
             self.exit()
         elif len(self.args) > 1 and self.args[0].strip().count('-h') \
                 and self.args[1].strip().count('now'):
@@ -552,12 +552,10 @@ class command_shutdown(HoneyPotCommand):
         else:
             self.write("Try `shutdown --help' for more information.\n")
             self.exit()
-            return
 
     def finish(self):
         stat = failure.Failure(error.ProcessDone(status=""))
         self.protocol.terminal.transport.processEnded(stat)
-        return
 
 
 commands['/sbin/shutdown'] = command_shutdown
@@ -579,7 +577,6 @@ class command_reboot(HoneyPotCommand):
     def finish(self):
         stat = failure.Failure(error.ProcessDone(status=""))
         self.protocol.terminal.transport.processEnded(stat)
-        return
 
 
 commands['/sbin/reboot'] = command_reboot
@@ -595,8 +592,8 @@ class command_history(HoneyPotCommand):
                 self.protocol.historyPosition = 0
                 return
             count = 1
-            for l in self.protocol.historyLines:
-                self.write(' %s  %s\n' % (str(count).rjust(4), l))
+            for line in self.protocol.historyLines:
+                self.write(' %s  %s\n' % (str(count).rjust(4), line))
                 count += 1
         except Exception:
             # Non-interactive shell, do nothing
@@ -677,14 +674,42 @@ commands['sh'] = command_sh
 class command_chmod(HoneyPotCommand):
 
     def call(self):
-        if len(self.args) < 2:
+        # at least 2 arguments are expected
+        if len(self.args) == 0:
             self.write('chmod: missing operand\n')
-            self.write('Try chmod --help for more information.\n')
+            self.write('Try \'chmod --help\' for more information.\n')
             return
-        for arg in self.args[1:]:
-            path = self.fs.resolve_path(arg, self.protocol.cwd)
+        elif len(self.args) == 1:
+            self.write('chmod: missing operand after ‘{}’\n'.format(self.args[0]))
+            self.write('Try \'chmod --help\' for more information.\n')
+            return
+
+        # extract mode, options and files from the command arguments
+        mode = None
+        options = []
+        files = []
+
+        for arg in self.args:
+            if re.match('-[cfvR]+', arg) or arg.startswith('--'):
+                options.append(arg)
+            elif mode is None:
+                mode = arg
+            else:
+                files.append(arg)
+
+        # mode has to match this regex
+        mode_regex = '[ugoa]*([-+=]([rwxXst]*|[ugo]))+|[-+=][0-7]+'
+        if not re.match(mode_regex, mode):
+            # invalid mode was specified
+            self.write('chmod: invalid mode: ‘{}’\n'.format(mode))
+            self.write('Try \'chmod --help\' for more information.\n')
+            return
+
+        # go through the list of files and check whether they exist
+        for file in files:
+            path = self.fs.resolve_path(file, self.protocol.cwd)
             if not self.fs.exists(path):
-                self.write('chmod: cannot access {}: No such file or directory\n'.format(arg))
+                self.write('chmod: cannot access \'{}\': No such file or directory\n'.format(file))
 
 
 commands['/bin/chmod'] = command_chmod
@@ -701,8 +726,8 @@ class command_php(HoneyPotCommand):
                 'PHP 5.3.5 (cli)',
                 'Copyright (c) 1997-2010 The PHP Group'
             )
-            for l in output:
-                self.write('{0}\n'.format(l))
+            for line in output:
+                self.write('{0}\n'.format(line))
             self.exit()
         elif self.args[0] == '-h':
             output = (
@@ -745,8 +770,8 @@ class command_php(HoneyPotCommand):
                 '  --ri <name>      Show configuration for extension <name>.',
                 ''
             )
-            for l in output:
-                self.write('{0}\n'.format(l))
+            for line in output:
+                self.write('{0}\n'.format(line))
             self.exit()
         else:
             self.exit()

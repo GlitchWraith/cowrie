@@ -14,10 +14,12 @@ Honeypot effort.
 What is Cowrie
 *****************************************
 
-Cowrie is a medium interaction SSH and Telnet honeypot designed to
-log brute force attacks and the shell interaction performed by the
-attacker. Cowrie also functions as an SSH and telnet proxy to observe
-attacker behavior to another system.
+Cowrie is a medium to high interaction SSH and Telnet honeypot
+designed to log brute force attacks and the shell interaction
+performed by the attacker. In medium interaction mode (shell) it
+emulates a UNIX system in Python, in high interaction mode (proxy)
+it functions as an SSH and telnet proxy to observe attacker behavior
+to another system.
 
 `Cowrie <http://github.com/cowrie/cowrie/>`_ is maintained by Michel Oosterhof.
 
@@ -29,7 +31,7 @@ The Documentation can be found `here <https://cowrie.readthedocs.io/en/latest/in
 Slack
 *****************************************
 
-You can join the Cowrie community at the following `Slack workspace <https://cowrie.org/slack/>`_.
+You can join the Cowrie community at the following `Slack workspace <https://www.cowrie.org/slack/>`_.
 
 Features
 *****************************************
@@ -40,6 +42,8 @@ Features
    * Cowrie saves files downloaded with wget/curl or uploaded with SFTP and scp for later inspection
 
 * Or proxy SSH and telnet to another system
+   * Run as a pure telnet and ssh proxy with monitoring
+   * Or let Cowrie manage a pool of Qemu emualted servers to provide the systems to login to
 
 For both settings:
 
@@ -69,7 +73,7 @@ Requirements
 
 Software required:
 
-* Python 3.5+ (Python 2.7 support will be deprecated end of 2019)
+* Python 3.5+
 * python-virtualenv
 
 For Python dependencies, see `requirements.txt <https://github.com/cowrie/cowrie/blob/master/requirements.txt>`_.
@@ -94,11 +98,6 @@ Files of interest:
 Data Sharing
 *****************************************
 Cowrie will by default upload data on crashes and Python exceptions to api.cowrie.org. This information is used to improve the honeypot and is not shared with third parties. It can be disabled by setting `enabled=false` in `[output_crashreporter]`.
-
-I have some questions!
-*****************************************
-
-Please visit the `Slack workspace <http://bit.ly/cowrieslack>`_ and join the #questions channel.
 
 Contributors
 ***************

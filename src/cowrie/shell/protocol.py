@@ -48,6 +48,7 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
         self.realClientPort = None
         self.kippoIP = None
         self.clientIP = None
+        self.sessionno = None
 
         if self.fs.exists(user.avatar.home):
             self.cwd = user.avatar.home
@@ -69,13 +70,14 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
         """
         Send log directly to factory, avoiding normal log dispatch
         """
+        args['sessionno'] = self.sessionno
         pt = self.getProtoTransport()
-        args['sessionno'] = pt.transport.sessionno
         pt.factory.logDispatch(*msg, **args)
 
     def connectionMade(self):
         pt = self.getProtoTransport()
 
+        self.sessionno = pt.transport.sessionno
         self.realClientIP = pt.transport.getPeer().host
         self.realClientPort = pt.transport.getPeer().port
         self.logintime = time.time()
@@ -220,7 +222,11 @@ class HoneyPotExecProtocol(HoneyPotBaseProtocol):
         Before this, execcmd is 'bytes'. Here it converts to 'string' and
         commands work with string rather than bytes.
         """
-        self.execcmd = execcmd.decode('utf8')
+        try:
+            self.execcmd = execcmd.decode('utf8')
+        except UnicodeDecodeError:
+            log.err("Unusual execcmd: {}".format(repr(execcmd)))
+
         HoneyPotBaseProtocol.__init__(self, avatar)
 
     def connectionMade(self):
@@ -233,14 +239,6 @@ class HoneyPotExecProtocol(HoneyPotBaseProtocol):
 
     def keystrokeReceived(self, keyID, modifier):
         self.input_data += keyID
-
-    def eofReceived(self):
-        """
-        Received EOF, run command to finish and then exit
-        """
-        log.msg("received eof, sending ctrl-d to command")
-        if len(self.cmdstack):
-            self.cmdstack[-1].handle_CTRL_D()
 
 
 class HoneyPotInteractiveProtocol(HoneyPotBaseProtocol, recvline.HistoricRecvLine):

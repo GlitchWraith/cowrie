@@ -147,7 +147,7 @@ class SFTPServerForCowrieUser(object):
 
     def __init__(self, avatar):
         self.avatar = avatar
-        self.avatar.server.initFileSystem()
+        self.avatar.server.initFileSystem(self.avatar.home)
         self.fs = self.avatar.server.fs
 
     def _absPath(self, path):
@@ -192,7 +192,6 @@ class SFTPServerForCowrieUser(object):
         path = self._absPath(path)
         self.fs.mkdir2(path)
         self._setAttrs(path, attrs)
-        return
 
     def removeDirectory(self, path):
         log.msg("SFTP removeDirectory: {}".format(path))

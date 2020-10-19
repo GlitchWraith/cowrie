@@ -19,11 +19,20 @@ libvirt's XML configuration files.
 First of all, install the needed dependencies for the pool, as explained in
 `the installation steps <https://cowrie.readthedocs.io/en/latest/INSTALL.html>`_.
 
+Authorization
+*************
+
+Add your cowrie user to the libvrit group to ensure you have permission to run the VMs on the backend server::
+
+.. code-block:: bash
+
+    sudo usermod -aG "COWRIE_USER_HERE" libvirt
+
 Provided images
 ***************
 
 To allow for a simple setup, we provide two VM images to use with the backend pool: Ubuntu 18.04
-and OpenWRT. You can download them below, and then edit `cowrie.cfg` to match the path of the images.
+and OpenWRT. You can download them below, and then edit `cowrie.cfg`'s `guest_image_path` to match the path of the images.
 In the case of OpenWRT you will need two different files. Note that a separate set of configs is provided
 for each image in the default configuration. Choose the one you want to use and comment the other as needed.
 

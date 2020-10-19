@@ -31,8 +31,8 @@ class ReconnectingConnectionPool(adbapi.ConnectionPool):
         try:
             return adbapi.ConnectionPool._runInteraction(
                 self, interaction, *args, **kw)
-        except MySQLdb.OperationalError as e:
-            if e[0] not in (2003, 2006, 2013):
+        except (MySQLdb.OperationalError, MySQLdb._exceptions.OperationalError) as e:
+            if e.args[0] not in (2003, 2006, 2013):
                 raise e
             log.msg("RCP: got error {0}, retrying operation".format(e))
             conn = self.connections.get(self.threadID())
@@ -62,16 +62,26 @@ class Output(cowrie.core.output.Output):
                 cp_min=1,
                 cp_max=1,
                 charset='utf8mb4',
+                cp_reconnect=True,
                 use_unicode=True
             )
-        except MySQLdb.Error as e:
+        except (MySQLdb.Error, MySQLdb._exceptons.Error) as e:
             log.msg("output_mysql: Error %d: %s" % (e.args[0], e.args[1]))
 
     def stop(self):
+        self.db.commit()
         self.db.close()
 
     def sqlerror(self, error):
-        log.err('output_mysql: MySQL Error: {}'.format(error.value))
+        """
+        1146, "Table '...' doesn't exist"
+        1406, "Data too long for column '...' at row ..."
+        """
+        if error.value[0] in (1146, 1406):
+            log.msg("output_mysql: MySQL Error: {}".format(error.value))
+            log.msg("MySQL schema maybe misconfigured, doublecheck database!")
+        else:
+            log.err("output_mysql: MySQL Error: {}".format(error.value))
 
     def simpleQuery(self, sql, args):
         """

@@ -120,6 +120,12 @@ backend = shell
 # savings time and other special cases yourself when analysing the logs.
 timezone = UTC
 
+# Custom prompt
+# By default, Cowrie creates a shell prompt like: root@svr03:~#
+# If you want something totally custom, uncomment the option below and set your prompt
+# Beware that the path won't be included in your prompt any longer
+# prompt = hello>
+
 
 # ============================================================================
 # Network Specific Options
@@ -522,7 +528,7 @@ dsa_private_key = ${honeypot:state_path}/ssh_host_dsa_key
 # SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2
 # SSH-2.0-OpenSSH_5.9
 #
-# (default: "SSH-2.0-SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2")
+# (default: "SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2")
 version = SSH-2.0-OpenSSH_6.0p1 Debian-4+deb7u2
 
 # Cipher encryption algorithms to be used.
@@ -721,9 +727,37 @@ epoch_timestamp = false
 #host = localhost
 #port = 9200
 #index = cowrie
-#type = cowrie
+# type has been deprecated since ES 6.0.0
+# use _doc which is the default type. See
+# https://stackoverflow.com/a/53688626 for
+# more information
+#type = _doc
+# set pipeline = geoip to map src_ip to
+# geo location data. You can use a custom
+# pipeline but you must ensure it exists
+# in elasticsearch.
 #pipeline = geoip
-
+#
+# Authentication. When x-pack.security is enabled
+# in ES, default users have been created and requests
+# must be authenticated.
+#
+# Credentials
+#username = elastic
+#password = 
+#
+# TLS encryption. Communications between the client (cowrie) 
+# and the ES server should naturally be protected by encryption
+# if requests are authenticated (to prevent from man-in-the-middle 
+# attacks). The following options are then paramount
+# if username and password are provided.
+#
+# use ssl/tls
+#ssl = true
+# Path to trusted CA certs on disk
+#ca_certs = /cowrie/cowrie-git/etc/elastic_ca.crt
+# verify SSL certificates
+#verify_certs = true
 
 # Send login attemp information to SANS DShield
 # See https://isc.sans.edu/ssh.html
@@ -827,7 +861,18 @@ epoch_timestamp = false
 
 # HPFeeds
 #
-#[output_hpfeeds]
+#[output_hpfeeds3]
+#enabled = false
+#server = hpfeeds.mysite.org
+#port = 10000
+#identifier = abc123
+#secret = secret
+#debug = false
+
+
+# HPFeeds3
+# Python3 implementation of HPFeeds
+#[output_hpfeeds3]
 #enabled = false
 #server = hpfeeds.mysite.org
 #port = 10000
@@ -958,8 +1003,31 @@ topic = cowrie
 # API key then leave this option commented
 #api_key = 1234567890
 
+# Upload all files to a MISP instance of your liking.
+# The API key can be found under Event Actions -> Automation
+#[output_misp]
+#enabled = true
+#base_url = https://misp.somedomain.com
+#api_key = secret_key
+#verify_cert = true
+#publish_event = true
+#debug = false
+
 # The crashreporter sends data on Python exceptions to api.cowrie.org
 # To disable set `enabled = false` in cowrie.cfg
 [output_crashreporter]
-enabled = true
+enabled = false
 debug = false
+
+# Reports login attempts to AbuseIPDB. A short guide is in the original
+# pull request on GitHub: https://github.com/cowrie/cowrie/pull/1346
+#[output_abuseipdb]
+#enabled = true
+#api_key =
+#rereport_after = 24
+#tolerance_window is in minutes
+#tolerance_window = 120
+#tolerance_attempts = 10
+# WARNING: A binary file is read from this directory on start-up. Do not
+# change unless you understand the security implications!
+#dump_path = ${honeypot:state_path}/abuseipdb

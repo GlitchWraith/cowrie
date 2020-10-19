@@ -17,11 +17,14 @@ Welcome to Cowrie's documentation!
    CHANGELOG.rst
    CONTRIBUTING.rst
    PROXY.rst
+   HONEYFS.rst
    BACKEND_POOL.rst
    SNAPSHOTS.rst
+   docker/README.rst
    elk/README.rst
    graylog/README.rst
    kippo-graph/README.rst
+   sentinel/README.rst
    splunk/README.rst
    sql/README.rst
    squid/README.rst
