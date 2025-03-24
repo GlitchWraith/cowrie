@@ -30,7 +30,7 @@
 from __future__ import annotations
 from binascii import crc32
 from random import randint, seed
-from typing import Any, Union
+from typing import Any
 
 from twisted.python import log
 
@@ -44,8 +44,10 @@ class Passwd:
     passwords.
     """
 
-    passwd_file = "{}/etc/passwd".format(CowrieConfig.get("honeypot", "contents_path"))
-    passwd: list[dict[str, Any]] = []
+    passwd_file = "{}/etc/passwd".format(
+        CowrieConfig.get("honeypot", "contents_path", fallback="honeyfs")
+    )
+    passwd: list[dict[str, Any]]
 
     def __init__(self) -> None:
         self.load()
@@ -55,7 +57,7 @@ class Passwd:
         Load /etc/passwd
         """
         self.passwd = []
-        with open(self.passwd_file) as f:
+        with open(self.passwd_file, encoding="ascii") as f:
             while True:
                 rawline = f.readline()
                 if not rawline:
@@ -82,7 +84,7 @@ class Passwd:
                     pw_shell,
                 ) = line.split(":")
 
-                e: dict[str, Union[str, int]] = {}
+                e: dict[str, str | int] = {}
                 e["pw_name"] = pw_name
                 e["pw_passwd"] = pw_passwd
                 e["pw_gecos"] = pw_gecos
@@ -154,7 +156,9 @@ class Group:
     /etc/group.
     """
 
-    group_file = "{}/etc/group".format(CowrieConfig.get("honeypot", "contents_path"))
+    group_file = "{}/etc/group".format(
+        CowrieConfig.get("honeypot", "contents_path", fallback="honeyfs")
+    )
     group: list[dict[str, Any]]
 
     def __init__(self):
@@ -165,7 +169,7 @@ class Group:
         Load /etc/group
         """
         self.group = []
-        with open(self.group_file) as f:
+        with open(self.group_file, encoding="ascii") as f:
             while True:
                 rawline = f.readline()
                 if not rawline:
@@ -178,9 +182,9 @@ class Group:
                 if line.startswith("#"):
                     continue
 
-                (gr_name, gr_passwd, gr_gid, gr_mem) = line.split(":")
+                (gr_name, _, gr_gid, gr_mem) = line.split(":")
 
-                e: dict[str, Union[str, int]] = {}
+                e: dict[str, str | int] = {}
                 e["gr_name"] = gr_name
                 try:
                     e["gr_gid"] = int(gr_gid)

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import time
 
-from twisted.cred import portal as tp
 from twisted.internet import protocol
 from twisted.python import log
 
@@ -17,6 +16,11 @@ from cowrie.core.config import CowrieConfig
 from cowrie.telnet.transport import CowrieTelnetTransport
 from cowrie.telnet.userauth import HoneyPotTelnetAuthProtocol
 from cowrie.telnet_proxy.server_transport import FrontendTelnetTransport
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from twisted.plugin import IPlugin
+    from twisted.cred import portal as tp
 
 
 class HoneyPotTelnetFactory(protocol.ServerFactory):
@@ -25,10 +29,12 @@ class HoneyPotTelnetFactory(protocol.ServerFactory):
     They listen directly to the TCP port
     """
 
-    tac = None
-    portal: tp.Portal | None = None  # gets set by Twisted plugin
+    tac: IPlugin
+    banner: bytes
+    starttime: float
 
     def __init__(self, backend, pool_handler):
+        self.portal: tp.Portal | None = None  # gets set by Twisted plugin
         self.backend: str = backend
         self.pool_handler = pool_handler
         super().__init__()
@@ -42,11 +48,12 @@ class HoneyPotTelnetFactory(protocol.ServerFactory):
         for output in self.tac.output_plugins:
             output.logDispatch(**args)
 
-    def startFactory(self):
+    def startFactory(self) -> None:
         try:
             honeyfs = CowrieConfig.get("honeypot", "contents_path")
             issuefile = honeyfs + "/etc/issue.net"
-            self.banner = open(issuefile, "rb").read()
+            with open(issuefile, "rb") as banner:
+                self.banner = banner.read()
         except OSError:
             self.banner = b""
 
@@ -69,12 +76,3 @@ class HoneyPotTelnetFactory(protocol.ServerFactory):
         Stop output plugins
         """
         protocol.ServerFactory.stopFactory(self)
-
-    def buildProtocol(self, addr):
-        """
-        Overidden so we can keep a reference to running protocols (which is used for testing)
-        """
-        p = self.protocol()
-        p.factory = self
-
-        return p

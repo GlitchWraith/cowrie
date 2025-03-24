@@ -1,11 +1,12 @@
 from __future__ import annotations
 import getopt
-import ipaddress
 import re
 import socket
 import struct
 
+
 from cowrie.core.config import CowrieConfig
+from cowrie.core.network import communication_allowed
 from cowrie.shell.command import HoneyPotCommand
 
 long = int
@@ -13,29 +14,31 @@ long = int
 commands = {}
 
 
-def makeMask(n):
+def makeMask(n: int) -> int:
     """
     return a mask of n bits as a long integer
     """
     return (long(2) << n - 1) - 1
 
 
-def dottedQuadToNum(ip):
+def dottedQuadToNum(ip: str) -> int:
     """
     convert decimal dotted quad string to long integer
     this will throw builtins.OSError on failure
     """
-    return struct.unpack("I", socket.inet_aton(ip))[0]
+    ip32bit: bytes = socket.inet_aton(ip)
+    num: int = struct.unpack("I", ip32bit)[0]
+    return num
 
 
-def networkMask(ip, bits):
+def networkMask(ip: str, bits: int) -> int:
     """
     Convert a network address to a long integer
     """
     return dottedQuadToNum(ip) & makeMask(bits)
 
 
-def addressInNetwork(ip, net):
+def addressInNetwork(ip: int, net: int) -> int:
     """
     Is an address in a network
     """
@@ -49,7 +52,7 @@ class Command_nc(HoneyPotCommand):
 
     s: socket.socket
 
-    def help(self):
+    def help(self) -> None:
         self.write(
             """This is nc from the netcat-openbsd package. An alternative nc is available
 in the netcat-traditional package.
@@ -82,20 +85,8 @@ usage: nc [-46bCDdhjklnrStUuvZz] [-I length] [-i interval] [-O length]
             self.exit()
             return
 
-        if re.match(r"^\d+$", host):
-            address = int(host)
-        elif re.match(r"^[\d\.]+$", host):
-            try:
-                address = dottedQuadToNum(host)
-            except OSError:
-                self.exit()
-                return
-        else:
-            # TODO: should do dns lookup
-            self.exit()
-            return
-
-        if ipaddress.ip_address(address).is_private:
+        allowed = yield communication_allowed(host)
+        if not allowed:
             self.exit()
             return
 
@@ -113,7 +104,7 @@ usage: nc [-46bCDdhjklnrStUuvZz] [-I length] [-i interval] [-O length]
         except Exception:
             self.exit()
 
-    def recv_data(self):
+    def recv_data(self) -> None:
         data = b""
         while 1:
             packet = self.s.recv(1024)
@@ -126,16 +117,16 @@ usage: nc [-46bCDdhjklnrStUuvZz] [-I length] [-i interval] [-O length]
         self.s.close()
         self.exit()
 
-    def lineReceived(self, line):
+    def lineReceived(self, line: str) -> None:
         if hasattr(self, "s"):
             self.s.send(line.encode("utf8"))
 
-    def handle_CTRL_C(self):
+    def handle_CTRL_C(self) -> None:
         self.write("^C\n")
         if hasattr(self, "s"):
             self.s.close()
 
-    def handle_CTRL_D(self):
+    def handle_CTRL_D(self) -> None:
         if hasattr(self, "s"):
             self.s.close()
 

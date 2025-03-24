@@ -1,6 +1,44 @@
 Release Notes
 #############
 
+Release 2.6.0
+*************
+* Breaking change: default location of static files has moved from share/cowrie to src/cowrie/data
+* In the configuration file the `share_path` is now `data_path`
+* Python 3.12 support
+* Python 3.13 support
+* Pypy 3.10 support
+* Python 3.8 no longer supported
+* Twisted 24.10 support
+* Docker builds now use Debian 12 Bookworm
+* New output plugins: Oracle, Remote Syslog, Axiom
+* New commands: finger, groups, locate, lspci
+* Cowrie can now be installed with `pip install -e`
+
+Release 2.5.0
+*************
+
+* Datadog output module (Fred Baguelin <frederic.baguelin@datadoghq.com>)
+* General improvements to shell expansion handling
+* New version of Twisted supported
+* Python 3.11 support
+* Pypy 3.9 support
+* Add session type to Telegram output
+
+Release 2.4.0
+*************
+
+* Deprecate Python 3.7
+* Early support for Python 3.11
+* ThreatJammer output plugin (@diegoparrilla)
+* Telegram output plugin (@Louren)
+* Discord output plugin (@CyberSparkNL)
+* Updated mongodb output plugin
+* Dependency upgrades
+* Docker repo merged with this one
+* `wget` and `curl` rewritten using `treq`.
+* Migrate test framework from trial to unittest (@lazycrazyowl)
+
 Release 2.3.0
 *************
 

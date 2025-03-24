@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from twisted.conch.telnet import StatefulTelnetProtocol, TelnetTransport
 from twisted.internet import defer
-from twisted.internet import reactor  # type: ignore
+from twisted.internet import reactor
 from twisted.internet.protocol import ClientFactory
+from twisted.python import log
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from twisted.internet.interfaces import IAddress
 
 
 class TelnetConnectionError(Exception):
@@ -15,6 +19,12 @@ class TelnetConnectionError(Exception):
 
 
 class TelnetClient(StatefulTelnetProtocol):
+    """
+    A telnet client
+    """
+
+    factory: TelnetFactory
+
     def __init__(self):
         # output from server
         self.response: bytes = b""
@@ -22,7 +32,7 @@ class TelnetClient(StatefulTelnetProtocol):
         # callLater instance to wait until we have stop getting output for some time
         self.done_callback = None
 
-        self.command: Optional[bytes] = None
+        self.command: bytes | None = None
 
     def connectionMade(self):
         """
@@ -38,14 +48,14 @@ class TelnetClient(StatefulTelnetProtocol):
         when we detect the shell prompt.
         TODO: Need to handle authentication failure
         """
-        if self.factory.prompt.strip() == br"#":
-            self.re_prompt = re.compile(br"#")
+        if self.factory.prompt.strip() == rb"#":
+            self.re_prompt = re.compile(rb"#")
         else:
             self.re_prompt = re.compile(self.factory.prompt.encode())
 
-        if re.search(br"([Ll]ogin:\s+$)", data):
+        if re.search(rb"([Ll]ogin:\s+$)", data):
             self.sendLine(self.factory.username.encode())
-        elif re.search(br"([Pp]assword:\s+$)", data):
+        elif re.search(rb"([Pp]assword:\s+$)", data):
             self.sendLine(self.factory.password.encode())
         elif self.re_prompt.search(data):
             self.setLineMode()
@@ -67,7 +77,7 @@ class TelnetClient(StatefulTelnetProtocol):
 
         # start countdown to command done (when reached, consider the output was completely received and close)
         if not self.done_callback:
-            self.done_callback = reactor.callLater(0.5, self.close)  # type: ignore
+            self.done_callback = reactor.callLater(0.5, self.close)  # type: ignore[attr-defined]
         else:
             self.done_callback.reset(0.5)
 
@@ -76,7 +86,7 @@ class TelnetClient(StatefulTelnetProtocol):
         Sends a command via Telnet using line mode
         """
         self.command = command.encode()
-        self.sendLine(self.command)
+        self.sendLine(self.command)  # ignore: attr-defined
 
     def close(self):
         """
@@ -105,13 +115,13 @@ class TelnetFactory(ClientFactory):
         self.done_deferred = done_deferred
         self.callback = callback
 
-    def buildProtocol(self, addr):
+    def buildProtocol(self, addr: IAddress) -> TelnetTransport:
         transport = TelnetTransport(TelnetClient)
         transport.factory = self
         return transport
 
     def clientConnectionFailed(self, connector, reason):
-        print(f"Telnet connection failed. Reason: {reason}")
+        log.err(f"Telnet connection failed. Reason: {reason}")
 
 
 class TelnetClientCommand:

@@ -14,7 +14,8 @@ from zope.interface import implementer
 from twisted.conch.ssh import session
 from twisted.conch.telnet import ECHO, SGA, TelnetBootstrapProtocol
 from twisted.internet import interfaces, protocol
-from twisted.python import log
+from twisted.internet.protocol import connectionDone
+from twisted.python import failure, log
 
 from cowrie.insults import insults
 from cowrie.shell import protocol as cproto
@@ -23,11 +24,11 @@ from cowrie.shell import pwd
 
 class HoneyPotTelnetSession(TelnetBootstrapProtocol):
     id = 0  # telnet can only have 1 simultaneous session, unlike SSH
-    windowSize = [40, 80]
-    # to be populated by HoneyPotTelnetAuthProtocol after auth
-    transportId = None
 
     def __init__(self, username, server):
+        # to be populated by HoneyPotTelnetAuthProtocol after auth
+        self.transportId = None
+        self.windowSize = [40, 80]
         self.username = username.decode()
         self.server = server
 
@@ -50,13 +51,13 @@ class HoneyPotTelnetSession(TelnetBootstrapProtocol):
         }
 
         if self.uid == 0:
-            self.environ[
-                "PATH"
-            ] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            self.environ["PATH"] = (
+                "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            )
         else:
-            self.environ[
-                "PATH"
-            ] = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+            self.environ["PATH"] = (
+                "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+            )
 
         # required because HoneyPotBaseProtocol relies on avatar.avatar.home
         self.avatar = self
@@ -83,13 +84,13 @@ class HoneyPotTelnetSession(TelnetBootstrapProtocol):
         except Exception:
             log.msg(traceback.format_exc())
 
-    def connectionLost(self, reason):
+    def connectionLost(self, reason: failure.Failure = connectionDone) -> None:
         TelnetBootstrapProtocol.connectionLost(self, reason)
         self.server = None
         self.avatar = None
         self.protocol = None
 
-    def logout(self):
+    def logout(self) -> None:
         log.msg(f"avatar {self.username} logging out")
 
 
@@ -110,8 +111,8 @@ class TelnetSessionProcessProtocol(protocol.ProcessProtocol):
     def outReceived(self, data: bytes) -> None:
         self.session.write(data)
 
-    def errReceived(self, err: bytes) -> None:
-        log.msg(f"Error received: {err.decode()}")
+    def errReceived(self, data: bytes) -> None:
+        log.msg(f"Error received: {data.decode()}")
         # EXTENDED_DATA_STDERR is from ssh, no equivalent in telnet?
         # self.session.writeExtended(connection.EXTENDED_DATA_STDERR, err)
 

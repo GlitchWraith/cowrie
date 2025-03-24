@@ -12,7 +12,7 @@ commands = {}
 
 
 class Command_last(HoneyPotCommand):
-    def call(self):
+    def call(self) -> None:
         line = list(self.args)
         while len(line):
             arg = line.pop(0)
@@ -22,8 +22,7 @@ class Command_last(HoneyPotCommand):
                 line.pop(0)
 
         self.write(
-            "%-8s %-12s %-16s %s   still logged in\n"
-            % (
+            "{:8s} {:12s} {:16s} {}   still logged in\n".format(
                 self.protocol.user.username,
                 "pts/0",
                 self.protocol.clientIP,

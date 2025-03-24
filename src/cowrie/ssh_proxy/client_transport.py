@@ -29,7 +29,6 @@ def get_string(data: bytes) -> tuple[int, bytes]:
 
 
 class BackendSSHFactory(protocol.ClientFactory):
-
     server: Any
 
     def buildProtocol(self, addr):
@@ -58,7 +57,7 @@ class BackendSSHTransport(transport.SSHClientTransport, TimeoutMixin):
         self.factory.server.sshParse.set_client(self)
         transport.SSHClientTransport.connectionMade(self)
 
-    def verifyHostKey(self, pub_key, fingerprint):
+    def verifyHostKey(self, hostKey, fingerprint):
         return defer.succeed(True)
 
     def connectionSecure(self):
@@ -85,19 +84,18 @@ class BackendSSHTransport(transport.SSHClientTransport, TimeoutMixin):
         # we authenticate with the backend using the credentials provided
         # TODO create the account in the backend before (contact the pool of VMs for example)
         # so these credentials from the config may not be needed after all
-        username = CowrieConfig.get("proxy", "backend_user").encode()
-        password = CowrieConfig.get("proxy", "backend_pass").encode()
-
+        username = CowrieConfig.get("proxy", "backend_user")
+        password = CowrieConfig.get("proxy", "backend_pass")
         log.msg(f"Will auth with backend: {username}/{password}")
+
         self.sendPacket(5, bin_string_to_hex(b"ssh-userauth"))
         payload = (
-            bin_string_to_hex(username)
+            bin_string_to_hex(username.encode())
             + string_to_hex("ssh-connection")
             + string_to_hex("password")
             + b"\x00"
-            + bin_string_to_hex(password)
+            + bin_string_to_hex(password.encode())
         )
-
         self.sendPacket(50, payload)
         self.factory.server.backendConnected = True
 
@@ -144,11 +142,11 @@ class BackendSSHTransport(transport.SSHClientTransport, TimeoutMixin):
         self.transport.loseConnection()
         self.factory.server.transport.loseConnection()
 
-    def dispatchMessage(self, message_num, payload):
-        if message_num in [6, 52]:
+    def dispatchMessage(self, messageNum, payload):
+        if messageNum in [6, 52]:
             return  # TODO consume these in authenticateBackend
 
-        if message_num == 98:
+        if messageNum == 98:
             # looking for RFC 4254 - 6.10. Returning Exit Status
             pointer = 4  # ignore recipient_channel
             leng, message = get_string(payload[pointer:])
@@ -159,9 +157,9 @@ class BackendSSHTransport(transport.SSHClientTransport, TimeoutMixin):
                 log.msg(f"exitCode: {exit_status}")
 
         if transport.SSHClientTransport.isEncrypted(self, "both"):
-            self.packet_buffer(message_num, payload)
+            self.packet_buffer(messageNum, payload)
         else:
-            transport.SSHClientTransport.dispatchMessage(self, message_num, payload)
+            transport.SSHClientTransport.dispatchMessage(self, messageNum, payload)
 
     def packet_buffer(self, message_num: int, payload: bytes) -> None:
         """

@@ -37,10 +37,10 @@ from hashlib import md5
 
 from twisted.conch.ssh import transport
 from twisted.conch.ssh.common import getNS
-from twisted.internet import reactor  # type: ignore
+from twisted.internet import reactor
 from twisted.internet.endpoints import TCP4ClientEndpoint
 from twisted.protocols.policies import TimeoutMixin
-from twisted.python import log, randbytes
+from twisted.python import failure, log, randbytes
 
 from cowrie.core.config import CowrieConfig
 from cowrie.ssh_proxy import client_transport
@@ -55,6 +55,10 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
     After both sides are authenticated, forward all things from one side to another.
     """
 
+    buf: bytes
+    ourVersionString: bytes
+    gotVersion: bool
+
     # TODO merge this with HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin)
     # maybe create a parent class with common methods for the two
     def __init__(self):
@@ -64,9 +68,9 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         self.disconnected = False  # what was this used for
 
         self.peer_ip = None
-        self.peer_port = 0
+        self.peer_port: int = 0
         self.local_ip = None
-        self.local_port = 0
+        self.local_port: int = 0
 
         self.startTime = None
         self.transportId = None
@@ -93,12 +97,11 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         self.local_ip = self.transport.getHost().host
         self.local_port = self.transport.getHost().port
 
-        self.transport.write(f"{self.ourVersionString}\r\n".encode())
+        self.transport.write(self.ourVersionString + b"\r\n")
         self.currentEncryptions = transport.SSHCiphers(
             b"none", b"none", b"none", b"none"
         )
         self.currentEncryptions.setKeys(b"", b"", b"", b"", b"", b"")
-        self.otherVersionString: bytes = b"Unknown"
 
         log.msg(
             eventid="cowrie.session.connect",
@@ -127,11 +130,10 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
             backend_port = CowrieConfig.getint("proxy", "backend_ssh_port")
             self.connect_to_backend(backend_ip, backend_port)
 
-    def pool_connection_error(self, reason):
-        log.msg(
-            f"Connection to backend pool refused: {reason.value}. Disconnecting frontend..."
-        )
-        self.transport.loseConnection()
+    def pool_connection_error(self, reason: failure.Failure) -> None:
+        log.msg(f"Connection to backend pool refused: {reason.value}")
+        if self.transport:
+            self.transport.loseConnection()
 
     def pool_connection_success(self, pool_interface):
         log.msg("Connected to backend pool")
@@ -153,11 +155,10 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
 
             self.connect_to_backend(honey_ip, ssh_port)
 
-    def backend_connection_error(self, reason):
-        log.msg(
-            f"Connection to honeypot backend refused: {reason.value}. Disconnecting frontend..."
-        )
-        self.transport.loseConnection()
+    def backend_connection_error(self, reason: failure.Failure) -> None:
+        log.msg(f"Connection to honeypot backend refused: {reason.value}")
+        if self.transport:
+            self.transport.loseConnection()
 
     def backend_connection_success(self, backendTransport):
         log.msg("Connected to honeypot backend")
@@ -216,12 +217,10 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
                 ),
                 format="Remote SSH version: %(version)s",
             )
-            m = re.match(br"SSH-(\d+.\d+)-(.*)", self.otherVersionString)
+            m = re.match(rb"SSH-(\d+.\d+)-(.*)", self.otherVersionString)
             if m is None:
                 log.msg(
-                    "Bad protocol version identification: {}".format(
-                        repr(self.otherVersionString)
-                    )
+                    f"Bad protocol version identification: {self.otherVersionString!r}"
                 )
                 if self.transport:
                     self.transport.write(b"Protocol mismatch.\n")
@@ -238,27 +237,27 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
                 self.sendKexInit()
         packet = self.getPacket()
         while packet:
-            message_num = ord(packet[0:1])
-            self.dispatchMessage(message_num, packet[1:])
+            messageNum = ord(packet[0:1])
+            self.dispatchMessage(messageNum, packet[1:])
             packet = self.getPacket()
 
-    def dispatchMessage(self, message_num, payload):
+    def dispatchMessage(self, messageNum, payload):
         # overriden dispatchMessage sets services, we do that here too then
         # we're particularly interested in userauth, since Twisted does most of that for us
-        if message_num == 5:
+        if messageNum == 5:
             self.ssh_SERVICE_REQUEST(payload)
-        elif 50 <= message_num <= 79:  # userauth numbers
+        elif 50 <= messageNum <= 79:  # userauth numbers
             self.frontendAuthenticated = False
             transport.SSHServerTransport.dispatchMessage(
-                self, message_num, payload
+                self, messageNum, payload
             )  # let userauth deal with it
 
         # TODO delay userauth until backend is connected?
 
         elif transport.SSHServerTransport.isEncrypted(self, "both"):
-            self.packet_buffer(message_num, payload)
+            self.packet_buffer(messageNum, payload)
         else:
-            transport.SSHServerTransport.dispatchMessage(self, message_num, payload)
+            transport.SSHServerTransport.dispatchMessage(self, messageNum, payload)
 
     def sendPacket(self, messageType, payload):
         """
@@ -305,9 +304,7 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         cencCS = ",".join([alg.decode("utf-8") for alg in encCS])
         cmacCS = ",".join([alg.decode("utf-8") for alg in macCS])
         ccompCS = ",".join([alg.decode("utf-8") for alg in compCS])
-        hasshAlgorithms = "{kex};{enc};{mac};{cmp}".format(
-            kex=ckexAlgs, enc=cencCS, mac=cmacCS, cmp=ccompCS
-        )
+        hasshAlgorithms = f"{ckexAlgs};{cencCS};{cmacCS};{ccompCS}"
         hassh = md5(hasshAlgorithms.encode("utf-8")).hexdigest()
 
         log.msg(
@@ -369,8 +366,13 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
 
         if self.pool_interface:
             # free VM from pool (VM was used if we performed SSH authentication to the backend)
-            vm_dirty = self.sshParse.client.authDone if self.sshParse.client else False
-            self.pool_interface.send_vm_free(vm_dirty)
+            try:
+                vm_dirty = (
+                    self.sshParse.client.authDone if self.sshParse.client else False
+                )
+                self.pool_interface.send_vm_free(vm_dirty)
+            except AttributeError:
+                pass
 
             # close transport connection to pool
             self.pool_interface.transport.loseConnection()
@@ -416,7 +418,7 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         """
         log.msg(f"Got remote error, code {reasonCode} reason: {description}")
 
-    def packet_buffer(self, message_num: int, payload: bytes) -> None:
+    def packet_buffer(self, messageNum: int, payload: bytes) -> None:
         """
         We have to wait until we have a connection to the backend is ready. Meanwhile, we hold packets from client
         to server in here.
@@ -424,9 +426,9 @@ class FrontendSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         if not self.backendConnected:
             # wait till backend connects to send packets to them
             log.msg("Connection to backend not ready, buffering packet from frontend")
-            self.delayedPackets.append([message_num, payload])
+            self.delayedPackets.append([messageNum, payload])
         else:
             if len(self.delayedPackets) > 0:
-                self.delayedPackets.append([message_num, payload])
+                self.delayedPackets.append([messageNum, payload])
             else:
-                self.sshParse.parse_num_packet("[SERVER]", message_num, payload)
+                self.sshParse.parse_num_packet("[SERVER]", messageNum, payload)

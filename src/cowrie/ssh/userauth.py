@@ -14,6 +14,7 @@ from twisted.conch.ssh.common import NS, getNS
 from twisted.conch.ssh.transport import DISCONNECT_PROTOCOL_ERROR
 from twisted.internet import defer
 from twisted.python.failure import Failure
+from twisted.python import log
 
 from cowrie.core import credentials
 from cowrie.core.config import CowrieConfig
@@ -28,6 +29,8 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
     * IP based authentication
     """
 
+    bannerSent: bool = False
+    user: bytes
     _pamDeferred: defer.Deferred | None
 
     def serviceStarted(self) -> None:
@@ -38,10 +41,9 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
         )
 
         if keyboard is True:
-            self.interfaceToMethod[
-                credentials.IPluggableAuthenticationModulesIP
-            ] = b"keyboard-interactive"
-        self.bannerSent: bool = False
+            self.interfaceToMethod[credentials.IPluggableAuthenticationModulesIP] = (
+                b"keyboard-interactive"
+            )
         self._pamDeferred: defer.Deferred | None = None
         userauth.SSHUserAuthServer.serviceStarted(self)
 
@@ -55,10 +57,11 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
         self.bannerSent = True
         try:
             issuefile = CowrieConfig.get("honeypot", "contents_path") + "/etc/issue.net"
-            data = open(issuefile).read()
+            with open(issuefile, "rb") as issue:
+                data = issue.read()
         except OSError:
             return
-        if not data or not len(data.strip()):
+        if not data or not data.strip():
             return
         self.transport.sendPacket(userauth.MSG_USERAUTH_BANNER, NS(data) + NS(b"en"))
 
@@ -82,7 +85,7 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
     #         return defer.fail(error.ConchError("Incorrect signature"))
     #     return userauth.SSHUserAuthServer.auth_publickey(self, packet)
 
-    def auth_none(self, packet: bytes) -> Any:
+    def auth_none(self, _packet: bytes) -> Any:
         """
         Allow every login
         """
@@ -99,7 +102,7 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
         c = credentials.UsernamePasswordIP(self.user, password, srcIp)
         return self.portal.login(c, srcIp, IConchUser).addErrback(self._ebPassword)
 
-    def auth_keyboard_interactive(self, packet: bytes) -> Any:
+    def auth_keyboard_interactive(self, _packet: bytes) -> Any:
         """
         Keyboard interactive authentication.  No payload.  We create a
         PluggableAuthenticationModules credential and authenticate with our
@@ -140,7 +143,7 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
             elif kind in (3, 4):
                 return defer.fail(error.ConchError("cannot handle PAM 3 or 4 messages"))
             else:
-                return defer.fail(error.ConchError("bad PAM auth kind %i" % (kind,)))
+                return defer.fail(error.ConchError(f"bad PAM auth kind {kind}"))
         packet = NS(b"") + NS(b"") + NS(b"")
         packet += struct.pack(">L", len(resp))
         for prompt, echo in resp:
@@ -160,12 +163,10 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
             ...
             string response n
         """
-        d: defer.Deferred | None = self._pamDeferred
+        assert self._pamDeferred is not None
+        d: defer.Deferred = self._pamDeferred
         self._pamDeferred = None
         resp: list
-
-        if not d:
-            raise Exception("can't find deferred in ssh_USERAUTH_INFO_RESPONSE")
 
         try:
             resp = []
@@ -175,8 +176,8 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
                 response, packet = getNS(packet)
                 resp.append((response, 0))
             if packet:
-                raise error.ConchError(f"{len(packet):d} bytes of extra data")
-        except Exception:
-            d.errback(Failure())
+                log.msg(f"PAM Response: {len(packet):d} extra bytes: {packet!r}")
+        except Exception as e:
+            d.errback(Failure(e))
         else:
             d.callback(resp)

@@ -5,8 +5,9 @@
 This module contains ...
 """
 
-
 from __future__ import annotations
+
+from typing import Literal
 
 from twisted.conch.ssh import session
 from twisted.conch.ssh.common import getNS
@@ -21,11 +22,14 @@ class HoneyPotSSHSession(session.SSHSession):
     def __init__(self, *args, **kw):
         session.SSHSession.__init__(self, *args, **kw)
 
-    def request_env(self, data: bytes) -> int:
+    def request_env(self, data: bytes) -> Literal[0, 1]:
         name, rest = getNS(data)
         value, rest = getNS(rest)
+
         if rest:
-            raise ValueError("Bad data given in env request")
+            log.msg(f"Extra data in request_env: {rest!r}")
+            return 1
+
         log.msg(
             eventid="cowrie.client.var",
             format="request_env: %(name)s=%(value)s",
@@ -38,11 +42,11 @@ class HoneyPotSSHSession(session.SSHSession):
         return 0
 
     def request_agent(self, data: bytes) -> int:
-        log.msg(f"request_agent: {repr(data)}")
+        log.msg(f"request_agent: {data!r}")
         return 0
 
     def request_x11_req(self, data: bytes) -> int:
-        log.msg(f"request_x11: {repr(data)}")
+        log.msg(f"request_x11: {data!r}")
         return 0
 
     def closed(self) -> None:

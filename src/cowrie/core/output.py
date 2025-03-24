@@ -33,9 +33,10 @@ import re
 import socket
 import time
 from os import environ
-from typing import Any, Pattern
+from typing import Any
+from re import Pattern
 
-from twisted.internet import reactor  # type: ignore
+from twisted.internet import reactor
 from twisted.logger import formatTime
 
 from cowrie.core.config import CowrieConfig
@@ -58,33 +59,31 @@ from cowrie.core.config import CowrieConfig
 #  cowrie.session.file_download
 #  cowrie.session.file_upload
 
-"""
-The time is available in two formats in each event, as key 'time'
-in epoch format and in key 'timestamp' as a ISO compliant string
-in UTC.
-"""
+
+# The time is available in two formats in each event, as key 'time'
+# in epoch format and in key 'timestamp' as a ISO compliant string
+# in UTC.
 
 
-def convert(input):
+def convert(data):
     """
     This converts a nested dictionary with bytes in it to string
     """
-    if isinstance(input, str):
-        return input
-    if isinstance(input, dict):
-        return {convert(key): convert(value) for key, value in list(input.items())}
-    if isinstance(input, dict):
-        return {convert(key): convert(value) for key, value in list(input.items())}
-    elif isinstance(input, list):
-        return [convert(element) for element in input]
-    elif isinstance(input, bytes):
+    if isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        return {convert(key): convert(value) for key, value in list(data.items())}
+    if isinstance(data, dict):
+        return {convert(key): convert(value) for key, value in list(data.items())}
+    if isinstance(data, list):
+        return [convert(element) for element in data]
+    if isinstance(data, bytes):
         try:
-            string = input.decode("utf-8")
+            string = data.decode("utf-8")
         except UnicodeDecodeError:
-            string = repr(input)
+            string = repr(data)
         return string
-    else:
-        return input
+    return data
 
 
 class Output(metaclass=abc.ABCMeta):
@@ -159,7 +158,6 @@ class Output(metaclass=abc.ABCMeta):
         - 'message' or 'format'
         """
         sessionno: str
-        ev: dict
 
         # Ignore stdout and stderr in output plugins
         if "printed" in event:
@@ -194,7 +192,7 @@ class Output(metaclass=abc.ABCMeta):
 
         if "format" in ev and ("message" not in ev or ev["message"] == ()):
             try:
-                ev["message"] = ev["format"] % ev
+                ev["message"] = ev["format"] % ev  # type: ignore
                 del ev["format"]
             except Exception:
                 pass
@@ -226,6 +224,9 @@ class Output(metaclass=abc.ABCMeta):
                     sessionno = f"S{sshmatch.groups()[0]}"
             if sessionno == "0":
                 return
+        else:
+            print(f"Can't determine sessionno: {ev!r}")  # noqa: T201
+            return
 
         if sessionno in self.ips:
             ev["src_ip"] = self.ips[sessionno]

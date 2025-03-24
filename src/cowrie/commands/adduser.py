@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
 
-from twisted.internet import reactor  # type: ignore
+from twisted.internet import reactor
 
 from cowrie.shell.command import HoneyPotCommand
 
@@ -17,7 +16,7 @@ O_O, O_Q, O_P = 1, 2, 3
 
 class Command_adduser(HoneyPotCommand):
     item: int
-    output: list[tuple[int, str]] = [
+    output: tuple[tuple[int, str], ...] = (
         (O_O, "Adding user `%(username)s' ...\n"),
         (O_O, "Adding new group `%(username)s' (1001) ...\n"),
         (
@@ -47,10 +46,10 @@ class Command_adduser(HoneyPotCommand):
         (O_O, "Deleting group `%(username)s' (1001) ...\n"),
         (O_O, "Deleting home directory `/home/%(username)s' ...\n"),
         (O_Q, "Try again? [Y/n] "),
-    ]
-    username: Optional[str] = None
+    )
+    username: str | None = None
 
-    def start(self):
+    def start(self) -> None:
         self.item = 0
         for arg in self.args:
             if arg.startswith("-") or arg.isdigit():
@@ -64,7 +63,7 @@ class Command_adduser(HoneyPotCommand):
 
         self.do_output()
 
-    def do_output(self):
+    def do_output(self) -> None:
         if self.item == len(self.output):
             self.item = 7
             self.schedule_next()
@@ -81,10 +80,10 @@ class Command_adduser(HoneyPotCommand):
             self.item += 1
             self.schedule_next()
 
-    def schedule_next(self):
-        self.scheduled = reactor.callLater(0.5 + random.random() * 1, self.do_output)
+    def schedule_next(self) -> None:
+        self.scheduled = reactor.callLater(0.5 + random.random() * 1, self.do_output)  # type: ignore[attr-defined]
 
-    def lineReceived(self, line):
+    def lineReceived(self, line: str) -> None:
         if self.item + 1 == len(self.output) and line.strip() in ("n", "no"):
             self.exit()
             return

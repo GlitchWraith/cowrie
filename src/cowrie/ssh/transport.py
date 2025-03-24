@@ -19,8 +19,9 @@ from typing import Any
 
 from twisted.conch.ssh import transport
 from twisted.conch.ssh.common import getNS
+from twisted.internet.protocol import connectionDone
 from twisted.protocols.policies import TimeoutMixin
-from twisted.python import log, randbytes
+from twisted.python import failure, log, randbytes
 
 from cowrie.core.config import CowrieConfig
 
@@ -28,6 +29,8 @@ from cowrie.core.config import CowrieConfig
 class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
     startTime: float = 0.0
     gotVersion: bool = False
+    buf: bytes
+    transportId: str
     ipv4rex = re.compile(r"^::ffff:(\d+\.\d+\.\d+\.\d+)$")
     auth_timeout: int = CowrieConfig.getint(
         "honeypot", "authentication_timeout", fallback=120
@@ -35,6 +38,7 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
     interactive_timeout: int = CowrieConfig.getint(
         "honeypot", "interactive_timeout", fallback=300
     )
+    ourVersionString: bytes  # set by factory
     transport: Any
     outgoingCompression: Any
     _blockedByKeyExchange: Any
@@ -55,7 +59,7 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         """
         self.buf = b""
 
-        self.transportId: str = uuid.uuid4().hex[:12]
+        self.transportId = uuid.uuid4().hex[:12]
         src_ip: str = self.transport.getPeer().host
 
         ipv4_search = self.ipv4rex.search(src_ip)
@@ -74,7 +78,7 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
             protocol="ssh",
         )
 
-        self.transport.write(f"{self.ourVersionString}\r\n".encode("ascii"))
+        self.transport.write(self.ourVersionString + b"\r\n")
         self.currentEncryptions = transport.SSHCiphers(
             b"none", b"none", b"none", b"none"
         )
@@ -106,11 +110,11 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
 
         @type data: C{str}
         """
-        self.buf: bytes = self.buf + data
+        self.buf = self.buf + data
         if not self.gotVersion:
             if b"\n" not in self.buf:
                 return
-            self.otherVersionString = self.buf.split(b"\n")[0].strip()
+            self.otherVersionString: bytes = self.buf.split(b"\n")[0].strip()
             log.msg(
                 eventid="cowrie.client.version",
                 version=self.otherVersionString.decode(
@@ -118,34 +122,31 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
                 ),
                 format="Remote SSH version: %(version)s",
             )
-            m = re.match(br"SSH-(\d+.\d+)-(.*)", self.otherVersionString)
+            m = re.match(rb"SSH-(\d+\.\d+)-(.*)", self.otherVersionString)
             if m is None:
                 log.msg(
-                    "Bad protocol version identification: {}".format(
-                        repr(self.otherVersionString)
-                    )
+                    f"Bad protocol version identification: {self.otherVersionString!r}"
                 )
                 # OpenSSH sending the same message
                 self.transport.write(b"Invalid SSH identification string.\n")
                 self.transport.loseConnection()
                 return
-            else:
-                self.gotVersion = True
-                remote_version = m.group(1)
-                if remote_version not in self.supportedVersions:
-                    self._unsupportedVersionReceived(self.otherVersionString)
-                    return
-                i = self.buf.index(b"\n")
-                self.buf = self.buf[i + 1 :]
-                self.sendKexInit()
+            self.gotVersion = True
+            remote_version = m.group(1)
+            if remote_version not in self.supportedVersions:
+                self._unsupportedVersionReceived(self.otherVersionString)
+                return
+            i = self.buf.index(b"\n")
+            self.buf = self.buf[i + 1 :]
+            self.sendKexInit()
         packet = self.getPacket()
         while packet:
             messageNum = ord(packet[0:1])
             self.dispatchMessage(messageNum, packet[1:])
             packet = self.getPacket()
 
-    def dispatchMessage(self, message_num: int, payload: bytes) -> None:
-        transport.SSHServerTransport.dispatchMessage(self, message_num, payload)
+    def dispatchMessage(self, messageNum: int, payload: bytes) -> None:
+        transport.SSHServerTransport.dispatchMessage(self, messageNum, payload)
 
     def sendPacket(self, messageType: int, payload: bytes) -> None:
         """
@@ -167,6 +168,7 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         lenPad = bs - (totalSize % bs)
         if lenPad < 4:
             lenPad = lenPad + bs
+        padding: bytes
         if messageType == transport.MSG_KEXINIT:
             padding = b"\0" * lenPad
         else:
@@ -192,9 +194,7 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         cencCS = ",".join([alg.decode("utf-8") for alg in encCS])
         cmacCS = ",".join([alg.decode("utf-8") for alg in macCS])
         ccompCS = ",".join([alg.decode("utf-8") for alg in compCS])
-        hasshAlgorithms = "{kex};{enc};{mac};{cmp}".format(
-            kex=ckexAlgs, enc=cencCS, mac=cmacCS, cmp=ccompCS
-        )
+        hasshAlgorithms = f"{ckexAlgs};{cencCS};{cmacCS};{ccompCS}"
         hassh = md5(hasshAlgorithms.encode("utf-8")).hexdigest()
 
         log.msg(
@@ -238,7 +238,7 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
 
         transport.SSHServerTransport.setService(self, service)
 
-    def connectionLost(self, reason):
+    def connectionLost(self, reason: failure.Failure = connectionDone) -> None:
         """
         This seems to be the only reliable place of catching lost connection
         """
@@ -246,10 +246,10 @@ class HoneyPotSSHTransport(transport.SSHServerTransport, TimeoutMixin):
         transport.SSHServerTransport.connectionLost(self, reason)
         self.transport.connectionLost(reason)
         self.transport = None
-        duration = time.time() - self.startTime
+        duration = f"{time.time() - self.startTime:.1f}"
         log.msg(
             eventid="cowrie.session.closed",
-            format="Connection lost after %(duration)d seconds",
+            format="Connection lost after %(duration)s seconds",
             duration=duration,
         )
 
